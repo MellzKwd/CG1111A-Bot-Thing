@@ -1,3 +1,6 @@
+//Please put this outside of any membot files from the old team and/or js make a whole new file and ctrl c ctrl v this in
+//thxu
+
 #include "MeMCore.h"
 
 MeDCMotor leftMotor(M1);
