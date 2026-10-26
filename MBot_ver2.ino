@@ -43,6 +43,48 @@ void uTurn()
     delay(CLEAR_LINE_MS);
 }
 
+// --- Smooth left-wall following ---
+const int   BASE_SPEED     = 220;   // below 255 so one wheel has room to speed up
+const float TARGET_CM      = 8.0;   // distance to hold from the left wall
+const float WALL_LOST_CM   = 20.0;  // beyond this = no wall, drive straight
+const float KP             = 12.0;  // steering strength (speed per cm of error)
+const int   MAX_CORRECTION = 80;    // caps how hard it can steer
+const float SMOOTHING      = 0.3;   // 0..1: lower = smoother but slower to react
+
+float filteredDist = TARGET_CM;
+bool  hadWall = false;
+
+void followLeftWall()
+{
+    float raw = ultrasonic.distanceCm();
+    if (raw <= 0) return;                 // bad reading, keep current speeds
+
+    if (raw >= WALL_LOST_CM)              // no wall (also catches the 400 "no echo" value)
+    {
+        hadWall = false;
+        drive(BASE_SPEED, BASE_SPEED);
+        return;
+    }
+
+    if (!hadWall)                         // wall just reappeared: start the filter from the real value
+    {
+        filteredDist = raw;
+        hadWall = true;
+    }
+
+    filteredDist = SMOOTHING * raw + (1 - SMOOTHING) * filteredDist;
+
+    float error = TARGET_CM - filteredDist;   // + = too close, - = too far
+    int correction = constrain((int)(KP * error), -MAX_CORRECTION, MAX_CORRECTION);
+
+    // too close -> left faster, right slower -> eases away from the wall
+    // too far   -> eases back toward it
+    drive(constrain(BASE_SPEED + correction, 0, 255),
+          constrain(BASE_SPEED - correction, 0, 255));
+
+    Serial.println(filteredDist);
+}
+
 void setup()
 {
     Serial.begin(9600);
@@ -62,18 +104,6 @@ void loop()
         return;                       // start the loop again after the turn
     }
 
-    // Wall check, as before
-    float distance = ultrasonic.distanceCm();
-    Serial.println(distance);
-
-    if (distance < TOO_CLOSE_CM)
-    {
-        drive(NORMAL_SPEED, SLOW_SPEED);
-    }
-    else
-    {
-        drive(NORMAL_SPEED, NORMAL_SPEED);
-    }
-
+       followLeftWall();
     delay(30);
 }
