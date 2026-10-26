@@ -16,6 +16,10 @@ const int TURNING_SPEED = 200;       // same as your original code
 const int UTURN_TIME_MS = 700;       // calibrate: adjust until it turns exactly 180 degrees
 const int CLEAR_LINE_MS = 300;       // drive forward after the turn so it moves off the line
 
+// ---------- colours ----------
+// declaration of colours
+enum Colour { COLOUR_UNKNOWN, COLOUR_RED, COLOUR_GREEN, COLOUR_BLUE, COLOUR_PINK, COLOUR_BLACK, COLOUR_ORANGE };
+
 void drive(int leftSpeed, int rightSpeed)
 {
     leftMotor.run(-leftSpeed);
@@ -27,7 +31,23 @@ void stopMotors()
     leftMotor.stop();
     rightMotor.stop();
 }
-
+// turn left when it detects RED,, 2 times when it detects PINK
+void turnLeft()
+{
+    leftMotor.run(TURNING_SPEED);
+    rightMotor.run(TURNING_SPEED);
+    delay(TURNING_TIME_MS);
+    stopMotors();
+}
+// turn right when it detects GREEN,, 2 times when it detects BLUE
+void turnRight()
+{
+    leftMotor.run(-TURNING_SPEED);
+    rightMotor.run(-TURNING_SPEED);
+    delay(TURNING_TIME_MS);
+    stopMotors();
+}
+// 180 turn when it detects ORANGE
 void uTurn()
 {
     stopMotors();
