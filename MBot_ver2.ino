@@ -16,17 +16,30 @@ const int TURNING_SPEED = 200;       // same as your original code
 const int UTURN_TIME_MS = 700;       // calibrate: adjust until it turns exactly 180 degrees
 const int CLEAR_LINE_MS = 300;       // drive forward after the turn so it moves off the line
 
+// --- Smooth left-wall following ---
+const int   BASE_SPEED     = 220;   // below 255 so one wheel has room to speed up
+const float TARGET_CM      = 8.0;   // distance to hold from the left wall
+const float WALL_LOST_CM   = 20.0;  // beyond this = no wall, drive straight
+const float KP             = 12.0;  // steering strength (speed per cm of error)
+const int   MAX_CORRECTION = 80;    // caps how hard it can steer
+const float SMOOTHING      = 0.3;   // 0..1: lower = smoother but slower to react
+
+// --- ---- Right-wall IR sensor ---
+const int IR_PIN             = A0;  // CHANGE to the pin your IR sensor is connected to
+const int IR_TOO_CLOSE_VALUE = 500; // CALIBRATE: IR reading when too close to the right wall
+//const int IR_STEER           = 60;  // how hard to steer left when too close to the right wall - use slow speed
+
 // ---------- colours ----------
 // declaration of colours
 enum Colour { COLOUR_UNKNOWN, COLOUR_RED, COLOUR_GREEN, COLOUR_BLUE, COLOUR_PINK, COLOUR_BLACK, COLOUR_ORANGE };
 
-void drive(int leftSpeed, int rightSpeed)
+/*void drive(int leftSpeed, int rightSpeed)
 {
     leftMotor.run(-leftSpeed);
     rightMotor.run(rightSpeed);
 }
 
-void stopMotors()
+//void stopMotors()
 {
     leftMotor.stop();
     rightMotor.stop();
@@ -64,19 +77,17 @@ void uTurn()
     // Drive forward without checking the line, so it doesn't see the same line and stop again
     drive(NORMAL_SPEED, NORMAL_SPEED);
     delay(CLEAR_LINE_MS);
-}
+}*/
 
-// --- Smooth left-wall following ---
-const int   BASE_SPEED     = 220;   // below 255 so one wheel has room to speed up
-const float TARGET_CM      = 8.0;   // distance to hold from the left wall
-const float WALL_LOST_CM   = 20.0;  // beyond this = no wall, drive straight
-const float KP             = 12.0;  // steering strength (speed per cm of error)
-const int   MAX_CORRECTION = 80;    // caps how hard it can steer
-const float SMOOTHING      = 0.3;   // 0..1: lower = smoother but slower to react
+
 
 float filteredDist = TARGET_CM;
 bool  hadWall = false;
 
+int leftCorrection  = 0;   // positive = too close to LEFT wall  -> steer right
+int rightCorrection = 0;   // negative = too close to RIGHT wall -> steer left
+
+// function for the smooth left-wall following, IR sensor
 void followLeftWall()
 {
     float raw = ultrasonic.distanceCm();
@@ -98,15 +109,37 @@ void followLeftWall()
     filteredDist = SMOOTHING * raw + (1 - SMOOTHING) * filteredDist;
 
     float error = TARGET_CM - filteredDist;   // + = too close, - = too far
-    int correction = constrain((int)(KP * error), -MAX_CORRECTION, MAX_CORRECTION);
+    leftCorrection = constrain((int)(KP * error), -MAX_CORRECTION, MAX_CORRECTION);
 
-    // too close -> left faster, right slower -> eases away from the wall
+  /*  // too close -> left faster, right slower -> eases away from the wall
     // too far   -> eases back toward it
     drive(constrain(BASE_SPEED + correction, 0, 255),
-          constrain(BASE_SPEED - correction, 0, 255));
-
-    Serial.println(filteredDist);
+          constrain(BASE_SPEED - correction, 0, 255)); 
+*/ 
+   Serial.println(filteredDist);
 }
+void followRightWall()
+{
+    // IR PIN is at A0
+    int irValue = analogRead(IR_PIN);
+
+    Serial.print("IR: ");
+    Serial.println(irValue);              // use the Serial Monitor to calibrate IR_TOO_CLOSE_VALUE
+
+    // If your sensor reads LOWER when the wall is closer, keep "<".
+    // If it reads HIGHER when the wall is closer, change "<" to ">".
+    // too close value now is at 500
+    if (irValue < IR_TOO_CLOSE_VALUE)
+    {
+        rightCorrection = -IR_STEER;      // too close to right wall -> steer left
+    }
+    else
+    {
+        rightCorrection = 0;              // right side is fine
+    }
+}
+
+// function for the infrared sensor
 
 void setup()
 {
@@ -121,12 +154,26 @@ void loop()
     Serial.print("Line: ");
     Serial.println(lineState);
 
+    followLeftWall();
+    followRightWall();
+
+    // code when the line sensors detec a black line
     if (lineState != S1_OUT_S2_OUT)
     {
+        // ideally want a code here that calls the LDR function, motor function and then continue the loop until it reaches another black line
         uTurn();
         return;                       // start the loop again after the turn
     }
 
-       followLeftWall();
+     // NEW: combine both sensors, then drive ONCE
+    int correction = constrain(leftCorrection + rightCorrection, -MAX_CORRECTION, MAX_CORRECTION);
+
+    // correction > 0 -> left wheel faster, right slower -> steers right (away from left wall)
+    // correction < 0 -> right wheel faster, left slower -> steers left  (away from right wall)
+    //The correction speeds up one wheel and slows down the other, and that difference makes the bot curve. The first value is the left wheel speed and the second is the right wheel speed
+    drive(constrain(BASE_SPEED + correction, 0, 255),
+          constrain(BASE_SPEED - correction, 0, 255));
+
+
     delay(30);
 }
